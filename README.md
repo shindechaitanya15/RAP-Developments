@@ -696,7 +696,537 @@ define service ZUI_ZT_ROOT_V2 {
 </details>
 
 <details>
-  <summary></summary>
+  <summary>Precheck Methods, Validations, Determinations, Read and Modify EML Statements in RAP</summary>
+  
+## Precheck Methods, Validations, Determinations, Read and Modify EML Statements in RAP
+  
+### Introduction
+
+In continuation to my previous [Technology Blogs by SAP](https://community.sap.com/t5/technology-blogs-by-sap/bg-p/technology-blog-sap) where we discussed how to [Create Root-Child-Grandchild-Great Grandchild relationship using RAP](https://community.sap.com/t5/technology-blogs-by-members/create-root-child-grandchild-great-grandchild-relationship-using-rap/ba-p/14029438), with same example as base we will implement Precheck Methods, Validation, Determination, Read and Modify EML Statements in ABAP RESTful Application Programming Model. 
+
+<details open>
+  <summary>Precheck Methods</summary>
+  
+### Precheck Methods
+
+Precheck methods can be defined in Behavior Definition and are triggered during relevant actions. This can be used to validate the data before processing the action. Here in the example, I am implementing Precheck on Delete action to prevent deletion if child entities are created.
+
+```ABAP
+@EndUserText.label : 'Root Node'
+@AbapCatalog.enhancement.category : #NOT_EXTENSIBLE
+@AbapCatalog.tableCategory : #TRANSPARENT
+@AbapCatalog.deliveryClass : #A
+@AbapCatalog.dataMaintenance : #RESTRICTED
+define table zzt_root {
+
+  key client         : abap.clnt not null;
+  key uuid_root      : sysuuid_x16 not null;
+  semantickey_root   : abap.char(10);
+  description        : abap.char(255);
+  valid              : abap_boolean;
+  createdby          : abp_creation_user;
+  createdat          : abp_creation_tstmpl;
+  changedby          : abp_locinst_lastchange_user;
+  lastchangedat      : abp_lastchange_tstmpl;
+  locallastchangedat : abp_locinst_lastchange_tstmpl;
+
+}
+```
+
+![Adding Delete Precheck in Behavior Definition](https://github.com/shindechaitanya15/RAP-Developments/blob/main/RAP%20Development%20Images/Adding%20Delete%20Precheck%20in%20Behavior%20Definition.png)
+
+You can use Quick Fix functionality using "Ctrl + 1" and implement below code inside the method. Once implemented, activate and test code by trying to delete the root entity, while deleting an error should appear.
+
+```ABAP
+METHOD precheck_delete.
+    READ ENTITIES OF zr_zt_root IN LOCAL MODE
+    ENTITY Root
+    ALL FIELDS WITH CORRESPONDING #( keys )
+    RESULT DATA(lt_root)
+    ENTITY Root BY \_Child
+    ALL FIELDS WITH CORRESPONDING #( keys )
+    RESULT DATA(lt_child).
+    IF lt_child[] IS NOT INITIAL.
+      LOOP AT lt_root ASSIGNING FIELD-SYMBOL(<lfs_root>).
+        APPEND VALUE #( %tky = <lfs_root>-%tky ) TO failed-root.
+
+        APPEND VALUE #( %tky = keys[ 1 ]-%tky
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = 'Can not delete Root entity as it has child'
+                               ) ) TO reported-root.
+      ENDLOOP.
+    ENDIF.
+  ENDMETHOD.
+```
+
+An error will be displayed whenever Precheck validation fails:
+
+![Delete Precheck Error](https://github.com/shindechaitanya15/RAP-Developments/blob/main/RAP%20Development%20Images/Delete%20Precheck%20Error.png)
+</details>
+
+<details open>
+  <summary>Validations and Determinations</summary>
+  
+### Validations and Determinations
+
+For Validations and Determination, I have added two "abap_boolean" flags in all the entities like below. Make sure that you add the flag in Table, Draft Table, Interface View, Projection View and Behavior definition that we have created in the previous blog.
+
+Note 1: After adding the fields and changing the projection the view, preview for the Fiori Application stopped working. You may get error like "Creating operations are disabled for entity $AE_UIX#SRVD#XXXXXXXX" while creating or updating.
+
+For me issue was resolved after recreating the Behavior Definition for Projection View and Unpublishing and Publishing of oData V2 Service Binding.
+
+Note 2: In below examples, I have implemented logic for Root and Child entity only. Same can be used to Grandchild and Great Grand Child Entities. For Interface and Projection View, I have shown only Root Entities code as remaining entities, tables will also have the same changes for fields.
+
+Root Table:
+```ABAP
+@EndUserText.label : 'Root Node'
+@AbapCatalog.enhancement.category : #NOT_EXTENSIBLE
+@AbapCatalog.tableCategory : #TRANSPARENT
+@AbapCatalog.deliveryClass : #A
+@AbapCatalog.dataMaintenance : #RESTRICTED
+define table zzt_root {
+
+  key client         : abap.clnt not null;
+  key uuid_root      : sysuuid_x16 not null;
+  semantickey_root   : abap.char(10);
+  description        : abap.char(255);
+  valid              : abap_boolean;
+  active             : abap_boolean;
+  createdby          : abp_creation_user;
+  createdat          : abp_creation_tstmpl;
+  changedby          : abp_locinst_lastchange_user;
+  lastchangedat      : abp_lastchange_tstmpl;
+  locallastchangedat : abp_locinst_lastchange_tstmpl;
+
+}
+```
+
+Root Draft Table:
+```ABAP
+@EndUserText.label : 'Draft Database Table for ZZT_ROOT_D'
+@AbapCatalog.enhancement.category : #EXTENSIBLE_ANY
+@AbapCatalog.tableCategory : #TRANSPARENT
+@AbapCatalog.deliveryClass : #A
+@AbapCatalog.dataMaintenance : #RESTRICTED
+define table zzt_root_d {
+
+  key mandt          : mandt not null;
+  key uuidroot       : sysuuid_x16 not null;
+  semantickeyroot    : abap.char(10);
+  description        : abap.char(255);
+  valid              : abap_boolean;
+  active             : abap_boolean;
+  createdby          : abp_creation_user;
+  createdat          : abp_creation_tstmpl;
+  changedby          : abp_locinst_lastchange_user;
+  lastchangedat      : abp_lastchange_tstmpl;
+  locallastchangedat : abp_locinst_lastchange_tstmpl;
+  "%admin"           : include sych_bdl_draft_admin_inc;
+
+}
+```
+
+Root Interface View:
+```ABAP
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@Metadata.allowExtensions: true
+@EndUserText.label: '###GENERATED Core Data Service Entity'
+define root view entity ZR_ZT_ROOT
+  as select from zzt_root as Root
+  composition [*] of ZR_ZT_CHILD as _Child
+  association [0..*] to ZR_ZT_GCHILD as _GrandChild on $projection.UuidRoot = _GrandChild.UuidRoot
+  association [0..*] to ZR_ZT_GGCHILD as _GreatGrandChild on $projection.UuidRoot = _GreatGrandChild.UuidRoot
+{
+  key uuid_root as UuidRoot,
+  semantickey_root as SemantickeyRoot,
+  description as Description,
+  valid as Valid,
+  active as Active,
+  @Semantics.user.createdBy: true
+  createdby as Createdby,
+  @Semantics.systemDateTime.createdAt: true
+  createdat as Createdat,
+  @Semantics.user.localInstanceLastChangedBy: true
+  changedby as Changedby,
+  @Semantics.systemDateTime.lastChangedAt: true
+  lastchangedat as Lastchangedat,
+  @Semantics.systemDateTime.localInstanceLastChangedAt: true
+  locallastchangedat as Locallastchangedat,
+  _Child,
+  _GrandChild,
+  _GreatGrandChild
+}
+```
+
+Root Projection View:
+```ABAP
+@Metadata.allowExtensions: true
+@EndUserText.label: 'Root'
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+define root view entity ZC_ZT_ROOT
+  provider contract transactional_query
+  as projection on ZR_ZT_ROOT
+{
+  key UuidRoot,
+  SemantickeyRoot,
+  Description,
+  Valid,
+  Active,
+  Createdby,
+  Createdat,
+  Changedby,  
+  Lastchangedat,
+  Locallastchangedat,
+  _Child: redirected to composition child ZC_ZT_CHILD,
+  _GrandChild: redirected to ZC_ZT_GCHILD,
+  _GreatGrandChild: redirected to ZC_ZT_GGCHILD
+}
+```
+
+Behavior Definition:
+```ABAP
+managed implementation in class ZBP_R_ZT_ROOT unique;
+strict ( 2 );
+with draft;
+define behavior for ZR_ZT_ROOT alias Root
+persistent table zzt_root
+draft table zzt_root_d
+etag master Locallastchangedat
+lock master total etag Lastchangedat
+authorization master ( global )
+
+{
+  field ( readonly )
+  UuidRoot,
+  Createdby,
+  Createdat,
+  Changedby,
+  Lastchangedat,
+  Locallastchangedat;
+
+  field ( numbering : managed )
+  UuidRoot;
+
+
+  create;
+  update;
+  delete ( precheck );
+
+  draft action Activate optimized;
+  draft action Discard;
+  draft action Edit;
+  draft action Resume;
+  draft determine action Prepare
+  {
+    validation ( always ) checkValid;
+    determination ( always ) determineActive;
+  }
+
+  /*Validation*/
+  validation checkValid on save { create; update; }
+  /*Determination*/
+  determination determineActive on save { create; update; }
+
+  association _Child { create; with draft; }
+  association _GrandChild { with draft; }
+  association _GreatGrandChild { with draft; }
+
+  mapping for zzt_root
+    {
+      UuidRoot           = uuid_root;
+      SemantickeyRoot    = semantickey_root;
+      Description        = description;
+      Valid              = valid;
+      Active             = active;
+      Createdby          = createdby;
+      Createdat          = createdat;
+      Changedby          = changedby;
+      Lastchangedat      = lastchangedat;
+      Locallastchangedat = locallastchangedat;
+    }
+}
+
+define behavior for ZR_ZT_CHILD alias Child
+persistent table zzt_child
+draft table zzt_child_d
+lock dependent by _Root
+authorization dependent by _Root
+etag master Lastchangedat
+{
+  field ( readonly )
+  UuidRoot,
+  Createdby,
+  Createdat,
+  Changedby,
+  Lastchangedat,
+  Locallastchangedat;
+
+  field ( numbering : managed, readonly ) UuidChild;
+
+  association _Root { with draft; }
+  association _GrandChild { create; with draft; }
+  association _GreatGrandChild { with draft; }
+
+  update;
+  delete;
+
+  mapping for zzt_child
+    {
+      UuidChild          = uuid_child;
+      SemantickeyChild   = semantickey_child;
+      Description        = description;
+      Valid              = valid;
+      Active             = active;
+      UuidRoot           = uuid_root;
+      Createdby          = createdby;
+      Createdat          = createdat;
+      Changedby          = changedby;
+      Lastchangedat      = lastchangedat;
+      Locallastchangedat = locallastchangedat;
+    }
+}
+
+define behavior for ZR_ZT_GCHILD alias GrandChild
+persistent table zzt_gchild
+draft table zzt_gchild_d
+lock dependent by _Root
+authorization dependent by _Root
+etag master Lastchangedat
+{
+  field ( readonly )
+  UuidRoot,
+  UuidChild,
+  Createdby,
+  Createdat,
+  Changedby,
+  Lastchangedat,
+  Locallastchangedat;
+
+  field ( numbering : managed, readonly ) UuidGchild;
+
+  ancestor association _Root { with draft; }
+  association _Child { with draft; }
+  association _GreatGrandChild { create; with draft; }
+
+  update;
+  delete;
+
+  mapping for zzt_gchild
+    {
+      UuidGChild         = uuid_gchild;
+      UuidChild          = uuid_child;
+      SemantickeyGchild  = semantickey_gchild;
+      Description        = description;
+      Valid              = valid;
+      Active             = active;
+      UuidRoot           = uuid_root;
+      Createdby          = createdby;
+      Createdat          = createdat;
+      Changedby          = changedby;
+      Lastchangedat      = lastchangedat;
+      Locallastchangedat = locallastchangedat;
+    }
+}
+
+define behavior for ZR_ZT_GGCHILD alias GreatGranChild
+persistent table zzt_ggchild
+draft table zzt_ggchild_d
+lock dependent by _Root
+authorization dependent by _Root
+etag master Lastchangedat
+{
+  field ( readonly )
+  UuidRoot,
+  UuidChild,
+  UuidGchild,
+  Createdby,
+  Createdat,
+  Changedby,
+  Lastchangedat,
+  Locallastchangedat;
+
+  field ( numbering : managed, readonly ) UuidGgchild;
+
+  ancestor association _Root { with draft; }
+  ancestor association _Child { with draft; }
+  association _GrandChild { with draft; }
+
+  update;
+  delete;
+
+  mapping for zzt_ggchild
+    {
+      UuidGgchild        = uuid_ggchild;
+      SemantickeyGgchild = semantickey_ggchild;
+      Description        = description;
+      Valid              = valid;
+      Active             = active;
+      UuidRoot           = uuid_root;
+      UuidChild          = uuid_child;
+      UuidGChild         = uuid_gchild;
+      Createdby          = createdby;
+      Createdat          = createdat;
+      Changedby          = changedby;
+      Lastchangedat      = lastchangedat;
+      Locallastchangedat = locallastchangedat;
+    }
+}
+```
+
+</details>
+
+<details open>
+  <summary>EML Read Statements</summary>
+  
+### EML Read Statements
+
+READ ENTITES OF.... can be used to read associated entities by using association names as shown below. Here, Root entity's keys are being used to fetch Child entity's details with the help of "ENTITY Root BY \_Child", similarly it can be done for other associations as well.
+
+```ABAP
+READ ENTITIES OF zr_zt_root IN LOCAL MODE
+    ENTITY Root
+    ALL FIELDS WITH CORRESPONDING #( keys )
+    RESULT DATA(lt_root)
+    ENTITY Root BY \_Child
+    ALL FIELDS WITH CORRESPONDING #( keys )
+    RESULT DATA(lt_child).
+```
+
+</details>
+
+<details open>
+  <summary>EML Modify Statement</summary>
+  
+### EML Modify Statement
+
+For Modify Statement, a Table for Update needs to be declared and filled with appropriate key, draft flag, field values and control structure flags. Additionally, in modify statement you can mention the fields you want to update explicitly for successful update.
+
+```ABAP
+*Update Table declaration
+DATA: lt_child_update  TYPE TABLE FOR UPDATE zr_zt_child.
+
+*Fill update table with valid values and control flags
+      LOOP AT lt_root ASSIGNING FIELD-SYMBOL(<lfs_root>).
+
+        LOOP AT lt_child[] ASSIGNING FIELD-SYMBOL(<lfs_child>) WHERE Active <> <lfs_root>-Active.
+
+          APPEND VALUE #( %key = <lfs_child>-%key
+                          %is_draft = <lfs_child>-%is_draft
+                          active = <lfs_root>-Active
+                          %control = VALUE #( active = if_abap_behv=>mk-on ) ) TO lt_child_update.
+        ENDLOOP.
+
+      ENDLOOP.
+
+
+*Modify
+      IF lt_child[] IS NOT INITIAL.
+        MODIFY ENTITIES OF zr_zt_root IN LOCAL MODE
+        ENTITY Child
+        UPDATE FIELDS ( active )
+        WITH lt_child_update
+        REPORTED DATA(mappedchild).
+
+        reported = CORRESPONDING #( DEEP mappedchild ).
+      ENDIF.
+```
+
+</details>
+
+<details open>
+  <summary>Validation Logic</summary>
+  
+### Validation Logic
+
+For Validation, I have implemented below logic. Expectation is user should mark Child entity as valid before marking Root Entity as valid. This logic is only implemented for Root-Child Entity, you can similarly implement for Grandchild and Great Grandchild entities as well.
+
+```ABAP
+METHOD checkValid.
+    READ ENTITIES OF zr_zt_root IN LOCAL MODE
+      ENTITY Root
+      ALL FIELDS WITH CORRESPONDING #( keys )
+      RESULT DATA(lt_root)
+      ENTITY Root BY \_Child
+      ALL FIELDS WITH CORRESPONDING #( keys )
+      RESULT DATA(lt_child).
+    IF lt_child[] IS NOT INITIAL.
+      LOOP AT lt_root ASSIGNING FIELD-SYMBOL(<lfs_root>).
+        IF <lfs_root>-Valid IS NOT INITIAL.
+
+          LOOP AT lt_child[] ASSIGNING FIELD-SYMBOL(<lfs_child>) WHERE Valid IS INITIAL.
+            APPEND VALUE #( %tky = <lfs_root>-%tky ) TO failed-root.
+
+            APPEND VALUE #( %tky = keys[ 1 ]-%tky
+                            %msg = new_message_with_text(
+                                     severity = if_abap_behv_message=>severity-error
+                                     text     = 'Child entity is not marked as valid'
+                                   ) ) TO reported-root.
+          ENDLOOP.
+
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
+  ENDMETHOD.
+```
+
+On Save, the validation will be triggered if the Root entity is marked as valid:
+
+![Validation triggered on save](https://github.com/shindechaitanya15/RAP-Developments/blob/main/RAP%20Development%20Images/Validation%20triggered%20on%20save.png)
+
+![Saved after successful validation](https://github.com/shindechaitanya15/RAP-Developments/blob/main/RAP%20Development%20Images/Saved%20after%20successful%20validation.png)
+
+</details>
+
+<details open>
+  <summary>Determination Logic</summary>
+  
+### Determination Logic
+
+For Determination, expectation is that once Root Entity is marked as active, it should replicate to child entity as well. Below logic is implemented to replicate the active flag to associated entities.
+
+```ABAP
+METHOD determineActive.
+    DATA: lt_child_update  TYPE TABLE FOR UPDATE zr_zt_child.
+    READ ENTITIES OF zr_zt_root IN LOCAL MODE
+        ENTITY Root
+        ALL FIELDS WITH CORRESPONDING #( keys )
+        RESULT DATA(lt_root)
+        ENTITY Root BY \_Child
+        ALL FIELDS WITH CORRESPONDING #( keys )
+        RESULT DATA(lt_child).
+    IF lt_child[] IS NOT INITIAL.
+      LOOP AT lt_root ASSIGNING FIELD-SYMBOL(<lfs_root>).
+
+        LOOP AT lt_child[] ASSIGNING FIELD-SYMBOL(<lfs_child>) WHERE Active <> <lfs_root>-Active.
+
+          APPEND VALUE #( %key = <lfs_child>-%key
+                          %is_draft = <lfs_child>-%is_draft
+                          active = <lfs_root>-Active
+                          %control = VALUE #( active = if_abap_behv=>mk-on ) ) TO lt_child_update.
+        ENDLOOP.
+
+      ENDLOOP.
+
+      IF lt_child[] IS NOT INITIAL.
+        MODIFY ENTITIES OF zr_zt_root IN LOCAL MODE
+        ENTITY Child
+        UPDATE FIELDS ( active )
+        WITH lt_child_update
+        REPORTED DATA(mappedchild).
+
+        reported = CORRESPONDING #( DEEP mappedchild ).
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.
+```
+
+On Save, the determination will be triggered, and it will update the child entity with value same as root entity:
+
+![Determination for Active Checkbox](https://github.com/shindechaitanya15/RAP-Developments/blob/main/RAP%20Development%20Images/Determination%20for%20Active%20Checkbox.png)
+
+</details>
+
 </details>
 
  _Thank you for reading, I hope this helps you in implementing more such scenarios for specific requirements._
