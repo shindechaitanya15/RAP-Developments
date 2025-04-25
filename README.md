@@ -1229,4 +1229,808 @@ On Save, the determination will be triggered, and it will update the child entit
 
 </details>
 
+<details>
+  <summary>Add attachments to RAP entities</summary>
+
+## Add attachments to RAP entities
+
+### Introduction
+In continuation to the previous blogs about how to [Create Root-Child-Grandchild-Great Grandchild relationship using RAP](https://community.sap.com/t5/technology-blogs-by-members/create-root-child-grandchild-great-grandchild-relationship-using-rap/ba-p/14029438), with same example as base we will implement attachment handling in ABAP RESTful Application Programming Model.
+
+### What is required?
+1.	Go through [Create Root-Child-Grandchild-Great Grandchild relationship using RAP](https://community.sap.com/t5/technology-blogs-by-members/create-root-child-grandchild-great-grandchild-relationship-using-rap/ba-p/14029438), create required entities.
+2.	If you are using your own example, create all the relevant objects and have a Fiori Preview Application ready for testing
+
+### Step 1
+Create a Database Table to store he attachments.
+```ABAP
+@EndUserText.label : 'PDF Attachments for Root'
+@AbapCatalog.enhancement.category : #NOT_EXTENSIBLE
+@AbapCatalog.tableCategory : #TRANSPARENT
+@AbapCatalog.deliveryClass : #A
+@AbapCatalog.dataMaintenance : #RESTRICTED
+define table zzt_root_pdf {
+
+  key client          : abap.clnt not null;
+  key uuid_attachment : sysuuid_x16 not null;
+  uuid_root           : sysuuid_x16 not null;
+  description         : abap.char(255);
+  mimetype            : abap.string(0);
+  filename            : abap.string(0);
+  value               : abap.rawstring(0);
+  createdby           : abp_creation_user;
+  createdat           : abp_creation_tstmpl;
+  changedby           : abp_locinst_lastchange_user;
+  lastchangedat       : abp_lastchange_tstmpl;
+  locallastchangedat  : abp_locinst_lastchange_tstmpl;
+
+}
+```
+### Step 2
+Create Interface View for the Attachment Table.
+```ABAP
+@AbapCatalog.viewEnhancementCategory: [#NONE]
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'PDF Attachment for Root'
+@Metadata.ignorePropagatedAnnotations: true
+@ObjectModel.usageType:{
+    serviceQuality: #X,
+    sizeCategory: #S,
+    dataClass: #MIXED
+}
+define view entity ZR_ZT_ROOT_PDF
+  as select from zzt_root_pdf
+  association to parent ZR_ZT_ROOT as _Root on $projection.UuidRoot = _Root.UuidRoot
+{
+  key uuid_attachment    as UuidAttachment,
+      uuid_root          as UuidRoot,
+      description        as Description,
+      mimetype           as Mimetype,
+      filename           as Filename,
+      value              as Value,
+      @Semantics.user.createdBy: true
+      createdby          as Createdby,
+      @Semantics.systemDateTime.createdAt: true
+      createdat          as Createdat,
+      @Semantics.user.localInstanceLastChangedBy: true
+      changedby          as Changedby,
+      @Semantics.systemDateTime.lastChangedAt: true
+      lastchangedat      as Lastchangedat,
+      @Semantics.systemDateTime.localInstanceLastChangedAt: true
+      locallastchangedat as Locallastchangedat,
+      _Root
+}
+```
+### Step 3
+Create Projection View for the Attachment Table. 
+
+Here, ``` @Semantics.largeObject: { fileName: 'Filename', mimeType: 'Mimetype', contentDispositionPreference: #INLINE, acceptableMimeTypes: [ 'application/pdf' ]  } ``` plays key role in defining how the attachment entity behaves in Fiori Application. 
+
+``` contentDispositionPreference ``` will determine the attachment behaviour, which is download or preview based on ``` #INLINE ``` or ``` #ATTACHMENT ``` value.
+
+``` filename ``` and ``` mimeType ``` will store the file's relevant properties.
+
+``` acceptableMimeTypes ``` will restrict the mime types shown in the File Uploader prompt.
+
+
+```ABAP
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'PDF Attachment'
+@Metadata.ignorePropagatedAnnotations: true
+@Metadata.allowExtensions: true
+define view entity ZC_ZT_ROOT_PDF
+  as projection on ZR_ZT_ROOT_PDF
+{
+  key UuidAttachment,
+      UuidRoot,
+      Description,
+      @Semantics.mimeType: true
+      Mimetype,
+      Filename,
+      @Semantics.largeObject: { fileName: 'Filename', mimeType: 'Mimetype', contentDispositionPreference: #INLINE, acceptableMimeTypes: [ 'application/pdf' ]  }
+      Value,
+      Createdby,
+      Createdat,
+      Changedby,
+      Lastchangedat,
+      Locallastchangedat,
+      /* Associations */
+      _Root : redirected to parent ZC_ZT_ROOT
+}
+```
+### Step 4
+Add associations and Parent-Child Relationship in Interface and Projection View of root entity.
+
+Root Entity Interface View
+```ABAP
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@Metadata.allowExtensions: true
+@EndUserText.label: '###GENERATED Core Data Service Entity'
+define root view entity ZR_ZT_ROOT
+  as select from zzt_root as Root
+  composition [*] of ZR_ZT_CHILD as _Child
+  composition [*] of ZR_ZT_ROOT_PDF as _Pdf
+  association [0..*] to ZR_ZT_GCHILD as _GrandChild on $projection.UuidRoot = _GrandChild.UuidRoot
+  association [0..*] to ZR_ZT_GGCHILD as _GreatGrandChild on $projection.UuidRoot = _GreatGrandChild.UuidRoot
+{
+  key uuid_root as UuidRoot,
+  semantickey_root as SemantickeyRoot,
+  description as Description,
+  valid as Valid,
+  active as Active,
+  @Semantics.user.createdBy: true
+  createdby as Createdby,
+  @Semantics.systemDateTime.createdAt: true
+  createdat as Createdat,
+  @Semantics.user.localInstanceLastChangedBy: true
+  changedby as Changedby,
+  @Semantics.systemDateTime.lastChangedAt: true
+  lastchangedat as Lastchangedat,
+  @Semantics.systemDateTime.localInstanceLastChangedAt: true
+  locallastchangedat as Locallastchangedat,
+  _Child,
+  _GrandChild,
+  _GreatGrandChild,
+  _Pdf
+}
+```
+Root Entity Projection View
+```ABAP
+@Metadata.allowExtensions: true
+@EndUserText.label: 'Root'
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+define root view entity ZC_ZT_ROOT
+  provider contract transactional_query
+  as projection on ZR_ZT_ROOT
+{
+  key UuidRoot,
+      SemantickeyRoot,
+      Description,
+      Valid,
+      Active,
+      Createdby,
+      Createdat,
+      Changedby,
+      Lastchangedat,
+      Locallastchangedat,
+      _Child           : redirected to composition child ZC_ZT_CHILD,
+      _GrandChild      : redirected to ZC_ZT_GCHILD,
+      _GreatGrandChild : redirected to ZC_ZT_GGCHILD,
+      _Pdf             : redirected to composition child ZC_ZT_ROOT_PDF
+}
+```
+
+### Step 5
+Update Behaviour Definition for Interface Views and Projection Views
+
+Behaviour Definition for Interface Views
+```ABAP
+managed implementation in class ZBP_R_ZT_ROOT unique;
+strict ( 2 );
+with draft;
+define behavior for ZR_ZT_ROOT alias Root
+persistent table zzt_root
+draft table zzt_root_d
+etag master Locallastchangedat
+lock master total etag Lastchangedat
+authorization master ( global )
+
+{
+  field ( readonly )
+  UuidRoot,
+  Createdby,
+  Createdat,
+  Changedby,
+  Lastchangedat,
+  Locallastchangedat;
+
+  field ( numbering : managed )
+  UuidRoot;
+
+
+  create;
+  update;
+  delete ( precheck );
+
+  draft action Activate optimized;
+  draft action Discard;
+  draft action Edit;
+  draft action Resume;
+  draft determine action Prepare
+  {
+    validation ( always ) checkValid;
+    determination ( always ) determineActive;
+  }
+
+  /*Validation*/
+  validation checkValid on save { create; update; }
+  /*Determination*/
+  determination determineActive on save { create; update; }
+
+  association _Child { create; with draft; }
+  /*Added Attachments*/
+  association _Pdf { create; with draft; }
+  association _GrandChild { with draft; }
+  association _GreatGrandChild { with draft; }
+
+  mapping for zzt_root
+    {
+      UuidRoot           = uuid_root;
+      SemantickeyRoot    = semantickey_root;
+      Description        = description;
+      Valid              = valid;
+      Active             = active;
+      Createdby          = createdby;
+      Createdat          = createdat;
+      Changedby          = changedby;
+      Lastchangedat      = lastchangedat;
+      Locallastchangedat = locallastchangedat;
+    }
+}
+
+define behavior for ZR_ZT_CHILD alias Child
+persistent table zzt_child
+draft table zzt_child_d
+lock dependent by _Root
+authorization dependent by _Root
+etag master Lastchangedat
+{
+  field ( readonly )
+  UuidRoot,
+  Createdby,
+  Createdat,
+  Changedby,
+  Lastchangedat,
+  Locallastchangedat;
+
+  field ( numbering : managed, readonly ) UuidChild;
+
+  association _Root { with draft; }
+  association _GrandChild { create; with draft; }
+  association _GreatGrandChild { with draft; }
+
+  update;
+  delete;
+
+  mapping for zzt_child
+    {
+      UuidChild          = uuid_child;
+      SemantickeyChild   = semantickey_child;
+      Description        = description;
+      Valid              = valid;
+      Active             = active;
+      UuidRoot           = uuid_root;
+      Createdby          = createdby;
+      Createdat          = createdat;
+      Changedby          = changedby;
+      Lastchangedat      = lastchangedat;
+      Locallastchangedat = locallastchangedat;
+    }
+}
+
+define behavior for ZR_ZT_GCHILD alias GrandChild
+persistent table zzt_gchild
+draft table zzt_gchild_d
+lock dependent by _Root
+authorization dependent by _Root
+etag master Lastchangedat
+{
+  field ( readonly )
+  UuidRoot,
+  UuidChild,
+  Createdby,
+  Createdat,
+  Changedby,
+  Lastchangedat,
+  Locallastchangedat;
+
+  field ( numbering : managed, readonly ) UuidGchild;
+
+  ancestor association _Root { with draft; }
+  association _Child { with draft; }
+  association _GreatGrandChild { create; with draft; }
+
+  update;
+  delete;
+
+  mapping for zzt_gchild
+    {
+      UuidGChild         = uuid_gchild;
+      UuidChild          = uuid_child;
+      SemantickeyGchild  = semantickey_gchild;
+      Description        = description;
+      Valid              = valid;
+      Active             = active;
+      UuidRoot           = uuid_root;
+      Createdby          = createdby;
+      Createdat          = createdat;
+      Changedby          = changedby;
+      Lastchangedat      = lastchangedat;
+      Locallastchangedat = locallastchangedat;
+    }
+}
+
+define behavior for ZR_ZT_GGCHILD alias GreatGranChild
+persistent table zzt_ggchild
+draft table zzt_ggchild_d
+lock dependent by _Root
+authorization dependent by _Root
+etag master Lastchangedat
+{
+  field ( readonly )
+  UuidRoot,
+  UuidChild,
+  UuidGchild,
+  Createdby,
+  Createdat,
+  Changedby,
+  Lastchangedat,
+  Locallastchangedat;
+
+  field ( numbering : managed, readonly ) UuidGgchild;
+
+  ancestor association _Root { with draft; }
+  ancestor association _Child { with draft; }
+  association _GrandChild { with draft; }
+
+  update;
+  delete;
+
+  mapping for zzt_ggchild
+    {
+      UuidGgchild        = uuid_ggchild;
+      SemantickeyGgchild = semantickey_ggchild;
+      Description        = description;
+      Valid              = valid;
+      Active             = active;
+      UuidRoot           = uuid_root;
+      UuidChild          = uuid_child;
+      UuidGChild         = uuid_gchild;
+      Createdby          = createdby;
+      Createdat          = createdat;
+      Changedby          = changedby;
+      Lastchangedat      = lastchangedat;
+      Locallastchangedat = locallastchangedat;
+    }
+}
+/*Added Attachments*/
+define behavior for ZR_ZT_ROOT_PDF alias PdfAttachment
+persistent table zzt_root_pdf
+draft table zzt_root_pdf_d
+lock dependent by _Root
+authorization dependent by _Root
+etag master Lastchangedat
+{
+  field ( readonly )
+  UuidRoot,
+  Createdby,
+  Createdat,
+  Changedby,
+  Lastchangedat,
+  Locallastchangedat;
+
+  field ( numbering : managed, readonly ) UuidAttachment;
+
+  association _Root { with draft; }
+
+  update;
+  delete;
+
+  mapping for zzt_root_pdf
+    {
+      UuidAttachment     = uuid_attachment;
+      Description        = description;
+      UuidRoot           = uuid_root;
+      Mimetype           = mimetype;
+      Value              = value;
+      Filename           = filename;
+      Createdby          = createdby;
+      Createdat          = createdat;
+      Changedby          = changedby;
+      Lastchangedat      = lastchangedat;
+      Locallastchangedat = locallastchangedat;
+    }
+}
+```
+
+Behaviour Definition for Consumption Views
+```ABAP
+projection implementation in class ZBP_C_ZT_ROOT unique;
+strict ( 2 );
+use draft;
+define behavior for ZC_ZT_ROOT alias Root
+use etag
+
+{
+  use create;
+  use update;
+  use delete;
+
+  use action Edit;
+  use action Activate;
+  use action Discard;
+  use action Resume;
+  use action Prepare;
+
+  use association _Child { create; with draft; }
+  /*Added Attachments*/
+  use association _Pdf { create; with draft; }
+  use association _GrandChild { with draft; }
+  use association _GreatGrandChild { with draft; }
+}
+
+define behavior for ZC_ZT_CHILD alias Child
+{
+  use update;
+  use delete;
+
+  use association _Root { with draft; }
+  use association _GrandChild { create; with draft; }
+  use association _GreatGrandChild { with draft; }
+}
+define behavior for ZC_ZT_GCHILD alias GrandChild
+{
+  use update;
+  use delete;
+
+  use association _Root { with draft; }
+  use association _Child { with draft; }
+  use association _GreatGrandChild { create; with draft; }
+}
+define behavior for ZC_ZT_GGCHILD alias GreatGrandChild
+{
+  use update;
+  use delete;
+
+  use association _Root { with draft; }
+  use association _Child { with draft; }
+  use association _GrandChild { with draft; }
+}
+/*Added Attachments*/
+define behavior for ZC_ZT_ROOT_PDF alias PdfAttachment
+{
+  use update;
+  use delete;
+
+  use association _Root { with draft; }
+}
+```
+
+### Step 6
+
+Create and Update Metadata Extensions for Fiori Preview
+
+Create metadata extension for PDF Attachment entity
+
+```ABAP
+@Metadata.layer: #CORE
+@UI.headerInfo.title.type: #STANDARD
+@UI.headerInfo.title.value: 'Filename'
+@UI.headerInfo.description.type: #STANDARD
+@UI.headerInfo.description.value: 'UuidAttachment'
+annotate entity ZC_ZT_ROOT_PDF
+    with 
+{
+   @UI.facet: [ {
+  label: 'General Information',
+  id: 'GeneralInfo',
+  purpose: #STANDARD,
+  position: 10 ,
+  type: #IDENTIFICATION_REFERENCE
+  },
+  {
+          id: 'ChangeDetails',
+          purpose: #STANDARD,
+          label: 'Change Log',
+          type: #COLLECTION,
+          position: 30
+     },
+     {
+        id : 'ChangeInfo',
+        label: 'Change Log',
+        purpose: #STANDARD,
+        parentId : 'ChangeDetails',
+        type : #FIELDGROUP_REFERENCE,
+        targetQualifier : 'ChangeInformation',
+        position: 40
+    }
+  ]
+  @UI.identification: [ {
+   position: 10
+  } ]
+  @UI.lineItem: [ {
+    position: 10
+  } ]
+  @UI.selectionField: [ {
+    position: 10
+  } ]
+  UuidAttachment;
+  @UI.identification: [ {
+  position: 20
+  } ]
+  @UI.lineItem: [ {
+    position: 20
+  } ]
+  @UI.selectionField: [ {
+    position: 20
+  } ]
+  @EndUserText: { label: 'File Name', quickInfo: 'File Name' }
+  @UI.hidden: true
+  Filename;
+  @UI.identification: [ {
+  position: 30
+  } ]
+  @UI.lineItem: [ {
+    position: 30
+  } ]
+  @UI.selectionField: [ {
+    position: 30
+  } ]
+  @EndUserText: { label: 'Description', quickInfo: 'Description' }
+  Description;
+  @UI.identification: [ {
+  position: 40
+  } ]
+  @UI.lineItem: [ {
+    position: 40
+  } ]
+  @UI.selectionField: [ {
+    position: 40
+  } ]
+  UuidRoot;
+  @UI.fieldGroup: [{ qualifier: 'ChangeInformation', position: 10 }]
+  @UI.lineItem: [ {
+    position: 70
+  } ]
+  @UI.selectionField: [ {
+    position: 70
+  } ]
+  Createdby;
+  @UI.fieldGroup: [{ qualifier: 'ChangeInformation', position: 20 }]
+  @UI.lineItem: [ {
+    position: 80
+  } ]
+  @UI.selectionField: [ {
+    position: 80
+  } ]
+  Createdat;
+  @UI.fieldGroup: [{ qualifier: 'ChangeInformation', position: 30 }]
+  @UI.lineItem: [ {
+    position: 90
+  } ]
+  @UI.selectionField: [ {
+    position: 90
+  } ]
+  Changedby;
+  @UI.fieldGroup: [{ qualifier: 'ChangeInformation', position: 40 }]
+  @UI.lineItem: [ {
+    position: 100
+  } ]
+  @UI.selectionField: [ {
+    position: 100
+  } ]
+  Lastchangedat;
+  @UI.fieldGroup: [{ qualifier: 'ChangeInformation', position: 50 }]
+  @UI.lineItem: [ {
+    position: 110
+  } ]
+  @UI.selectionField: [ {
+    position: 110
+  } ]
+  Locallastchangedat;
+  @UI.hidden: true
+  @EndUserText: { label: 'File', quickInfo: 'File' }
+  @UI.identification: [ {
+    position: 50 ,
+    label: 'File'
+  } ]
+  @UI.lineItem: [ {
+    position: 50 ,
+    label: 'File'
+  } ]
+  @UI.selectionField: [ {
+    position: 50
+  } ]
+  Value;
+  @EndUserText.label: 'Mime Type'
+  @UI.identification: [ {
+    position: 60 ,
+    label: 'Mime Type'
+  } ]
+  @UI.lineItem: [ {
+    position: 60 ,
+    label: 'Mime Type'
+  } ]
+  @UI.selectionField: [ {
+    position: 60
+  } ]
+  @UI.hidden: true
+  Mimetype;
+    
+}
+```
+
+Update metadata extension for Root Entity
+```ABAP
+@Metadata.layer: #CORE
+@UI.headerInfo.title.type: #STANDARD
+@UI.headerInfo.title.value: 'UuidRoot'
+@UI.headerInfo.description.type: #STANDARD
+@UI.headerInfo.description.value: 'UuidRoot'
+annotate view ZC_ZT_ROOT with
+{
+  @EndUserText.label: 'UuidRoot'
+  @UI.facet: [ {
+    label: 'General Information',
+    id: 'GeneralInfo',
+    purpose: #STANDARD,
+    position: 10 ,
+    type: #IDENTIFICATION_REFERENCE
+  },
+  { id: 'Child',
+        purpose: #STANDARD,
+        label: 'Child',
+        type: #LINEITEM_REFERENCE,
+        position: 20,
+        targetElement: '_Child'
+      },
+      { id: 'PDFAttachments',
+        purpose: #STANDARD,
+        label: 'PDF Attachments',
+        type: #LINEITEM_REFERENCE,
+        position: 30,
+        targetElement: '_Pdf'
+      },
+    {
+            id: 'ChangeDetails',
+            purpose: #STANDARD,
+            label: 'Change Log',
+            type: #COLLECTION,
+            position: 40
+       },
+       {
+          id : 'ChangeInfo',
+          label: 'Change Log',
+          purpose: #STANDARD,
+          parentId : 'ChangeDetails',
+          type : #FIELDGROUP_REFERENCE,
+          targetQualifier : 'ChangeInformation',
+          position: 50
+      }
+   ]
+  @UI.identification: [ {
+    position: 10 ,
+    label: 'UuidRoot'
+  } ]
+  @UI.lineItem: [ {
+    position: 10 ,
+    label: 'UuidRoot'
+  } ]
+  @UI.selectionField: [ {
+    position: 10
+  } ]
+  UuidRoot;
+
+  @EndUserText.label: 'SemantickeyRoot'
+  @UI.identification: [ {
+    position: 20 ,
+    label: 'SemantickeyRoot'
+  } ]
+  @UI.lineItem: [ {
+    position: 20 ,
+    label: 'SemantickeyRoot'
+  } ]
+  @UI.selectionField: [ {
+    position: 20
+  } ]
+  SemantickeyRoot;
+
+  @EndUserText.label: 'Description'
+  @UI.identification: [ {
+    position: 30 ,
+    label: 'Description'
+  } ]
+  @UI.lineItem: [ {
+    position: 30 ,
+    label: 'Description'
+  } ]
+  @UI.selectionField: [ {
+    position: 30
+  } ]
+  Description;
+  @UI.fieldGroup: [{ qualifier: 'ChangeInformation', position: 10 }]
+  @UI.lineItem: [ {
+    position: 60
+  } ]
+  @UI.selectionField: [ {
+    position: 60
+  } ]
+  Createdby;
+  @UI.fieldGroup: [{ qualifier: 'ChangeInformation', position: 20 }]
+  @UI.lineItem: [ {
+    position: 70
+  } ]
+  @UI.selectionField: [ {
+    position: 70
+  } ]
+  Createdat;
+  @UI.fieldGroup: [{ qualifier: 'ChangeInformation', position: 30 }]
+  @UI.lineItem: [ {
+    position: 80
+  } ]
+  @UI.selectionField: [ {
+    position: 80
+  } ]
+  Changedby;
+  @UI.fieldGroup: [{ qualifier: 'ChangeInformation', position: 40 }]
+  @UI.lineItem: [ {
+    position: 90
+  } ]
+  @UI.selectionField: [ {
+    position: 90
+  } ]
+  Lastchangedat;
+  @UI.fieldGroup: [{ qualifier: 'ChangeInformation', position: 50 }]
+  @UI.lineItem: [ {
+    position: 100,
+    qualifier: 'ChangeInfo'
+  } ]
+  @UI.selectionField: [ {
+    position: 100
+  } ]
+  Locallastchangedat;
+  @EndUserText.label: 'Valid'
+  @UI.identification: [ {
+    position: 40 ,
+    label: 'Valid'
+  } ]
+  @UI.lineItem: [ {
+    position: 40 ,
+    label: 'Valid'
+  } ]
+  @UI.selectionField: [ {
+    position: 40
+  } ]
+  Valid;
+  @EndUserText.label: 'Active'
+  @UI.identification: [ {
+    position: 50 ,
+    label: 'Active'
+  } ]
+  @UI.lineItem: [ {
+    position: 50 ,
+    label: 'Active'
+  } ]
+  @UI.selectionField: [ {
+    position: 50
+  } ]
+  Active;
+}
+```
+
+### Step 7
+Expose PDF Attachment entity in Service Definition
+```ABAP
+@EndUserText.label: 'Service Binding for Root Entity V2'
+define service ZUI_ZT_ROOT_V2 {
+  expose ZC_ZT_ROOT     as Root;
+  expose ZC_ZT_CHILD    as Child;
+  expose ZC_ZT_GCHILD   as GrandChild;
+  expose ZC_ZT_GGCHILD  as GreatGrandChild;
+  expose ZC_ZT_ROOT_PDF as PdfAttachment;
+}
+```
+
+### Fiori Preview
+
+![PDF Attachments Creation](https://github.com/shindechaitanya15/RAP-Developments/blob/main/RAP%20Development%20Images/PDF%20Attachments%20Creation%20Fiori%20Preview.png)
+
+![PDF Attachments Creation](https://github.com/shindechaitanya15/RAP-Developments/blob/main/RAP%20Development%20Images/PDF%20Attachments%20Creation%20Fiori%20Preview%202.png)
+
+![List Rerport](https://github.com/shindechaitanya15/RAP-Developments/blob/main/RAP%20Development%20Images/PDF%20Attachments%20Creation%20Fiori%20Preview%203.png)
+
+![PDF Attachments Mimetype](https://github.com/shindechaitanya15/RAP-Developments/blob/main/RAP%20Development%20Images/PDF%20Attachments%20Mimetype.png)
+
+</details>
+
  _Thank you for reading, I hope this helps you in implementing more such scenarios for specific requirements._
